@@ -1,0 +1,386 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::LanguageExtensions
+Description: Migration from x86_64 to ARM
+
+###############################################################################
+# Parameters
+###############################################################################
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Please modify it to fit the EC2 you are creating."
+        Parameters:
+          - Env
+          - Module
+          - AmiZone
+          - Zone
+          - AmiId
+          - AgentKey
+
+    ParameterLabels:
+      Env:
+        default: "Environment"
+      Module:
+        default: "Service Module"
+      AmiZone:
+        default: "AMI Instance Number"
+      Zone:
+        default: "Instance Number"
+      AmiId:
+        default: "AMI ID"
+      AgentKey:
+        default: "Agent host enrollment password"
+
+Parameters:
+  # Manual input in AWS Console STACK
+  ProjectName:
+    Type: String
+    Description: "junius"
+  AgentKey:
+    Type: String
+    NoEcho: true
+    Description: "Check Agent Account (junius.dev/junius.stg)"
+  AmiId:
+    Type: String
+    Description: "Please enter the AMI-ID to use."
+
+  Env:
+    Type: String
+    Default: DEV-EU
+    AllowedValues: 
+      - DEV-US
+      - DEV-EU
+      - STG-US
+      - STG-EU
+    Description: "Select Region & Environment"
+
+  Module:
+    Type: String
+    Default: A
+    AllowedValues:
+      - A
+      - B
+      - C
+      - D
+      - E
+      - F
+      - G
+    Description: "Select Module"
+
+  AmiZone:
+    Type: String
+    Default: 01a
+    AllowedValues:
+      - 01a
+      - 02b
+    Description: "Select Number+Zone(01a, 02b) of the created AMI"
+  InstanceZone:
+    Type: String
+    Default: 02b
+    AllowedValues: 
+      - 01a
+      - 02b
+    Description: "Select Number+Zone(01a, 02b) of the instance to be created"
+
+###############################################################################
+# Mappings
+###############################################################################
+Mappings:
+  EnvMap:
+    DEV-EU:
+      Environment: dev
+      Region: ireland
+      RegionCode: ew1
+
+    STG-US:
+      Environment: stg
+      Region: oregon
+      RegionCode: uw2
+
+    STG-EU:
+      Environment: stg
+      Region: oregon
+      RegionCode: uw2
+
+  ModuleMap:
+    A:
+      TYPE: WEB
+      ROLE: web
+
+    B:
+      TYPE: WEB
+      ROLE: web
+
+    C:
+      TYPE: WEB
+      ROLE: web
+
+    D:
+      TYPE: WAS
+      ROLE: was
+      
+    E:
+      TYPE: WAS
+      ROLE: was
+
+    F:
+      TYPE: WAS
+      ROLE: was
+      
+    G:
+      TYPE: WAS
+      ROLE: was
+
+  ZoneMap:
+    01a: 
+      SubnetNumber: "01"
+    02b:
+      SubnetNumber: "02"
+
+  SubnetMap: 
+    DEV-US:
+      Web01SubnetId: subnet-aaaaaaaa
+      Web02SubnetId: subnet-bbbbbbbb
+      Was01SubnetId: subnet-cccccccc
+      Was02SubnetId: subnet-dddddddd
+
+    DEV-EU:
+      Web01SubnetId: subnet-eeeeeeee
+      Web02SubnetId: subnet-ffffffff
+      Was01SubnetId: subnet-gggggggg
+      Was02SubnetId: subnet-hhhhhhhh
+      
+    STG-US: 
+      Web01SubnetId: subnet-iiiiiiii
+      Web02SubnetId: subnet-jjjjjjjj
+      Was01SubnetId: subnet-kkkkkkkk
+      Was02SubnetId: subnet-llllllll
+      
+    STG-EU:
+      Web01SubnetId: subnet-mmmmmmmm
+      Web02SubnetId: subnet-nnnnnnnn
+      Was01SubnetId: subnet-oooooooo
+      Was02SubnetId: subnet-pppppppp
+
+  RegionEnvModuleMap:
+    ################
+    #    DEV-EU    #
+    ################
+    DEV-EU-A:
+      InstanceType: t4g.medium
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    DEV-EU-B:
+      InstanceType: t4g.small
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    DEV-EU-C:
+      InstanceType: t4g.small
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    DEV-EU-D:
+      InstanceType: t4g.medium
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    DEV-EU-E:
+      InstanceType: t4g.large
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    DEV-EU-F:
+      InstanceType: t4g.medium
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    DEV-EU-G:
+      InstanceType: t4g.large
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    ################
+    #    STG-US    #
+    ################
+    STG-US-A:
+      InstanceType: c8g.large
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    STG-US-B:
+      InstanceType: c8g.large
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    STG-US-C:
+      InstanceType: t4g.medium
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    STG-US-D:
+      InstanceType: t4g.small
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    STG-US-E:
+      InstanceType: t4g.small
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    STG-US-F:
+      InstanceType: t4g.small
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    STG-US-G:
+      InstanceType: t4g.medium
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    ################
+    #    STG-EU    #
+    ################
+    STG-EU-A:
+      InstanceType: c8g.large
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    STG-EU-B:
+      InstanceType: c8g.large
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    STG-EU-C:
+      InstanceType: t4g.medium
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    STG-EU-D:
+      InstanceType: t4g.medium
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    STG-EU-E:
+      InstanceType: m8g.xlarge
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    STG-EU-F:
+      InstanceType: t4g.medium
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+    STG-EU-G:
+      InstanceType: t4g.medium
+      SecurityGroupIds: "sg-xxxxxxxx,sg-xxxxxxxx"
+
+
+###############################################################################
+# Resources
+###############################################################################
+Resources:
+  CreateInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+
+      KeyName: 
+        Fn::Sub:
+          - 'dev-${ProjectName}-${RegionCode}-key'
+          - RegionCode:
+              Fn::FindInMap:
+                - EnvMap
+                - !Ref Env
+                - RegionCode
+
+      InstanceType:
+        Fn::FindInMap:
+          - RegionEnvModuleMap
+          - Fn::Sub: '${Env}-${Module}'
+          - InstanceType
+
+      IamInstanceProfile: ec2_role
+      DisableApiTermination: true
+      
+      SubnetId:
+        Fn::FindInMap:
+          - SubnetMap
+          - !Ref Env
+          - Fn::Sub:
+              - '${SubnetType}${SubnetNumber}SubnetId'
+              - SubnetType:
+                  Fn::FindInMap:
+                    - ModuleMap
+                    - !Ref Module
+                    - SubnetType
+                SubnetNumber:
+                  Fn::FindInMap:
+                    - ZoneMap
+                    - !Ref Zone
+                    - SubnetNumber
+
+      SecurityGroupIds:
+        Fn::Split:
+          - ','
+          - Fn::FindInMap:
+              - RegionEnvModuleMap
+              - Fn::Sub: '${Env}-${Module}'
+              - SecurityGroupIds
+
+      MetadataOptions:
+        HttpTokens: "required"
+
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub:
+              - '${Region}-${Environment}-${ProjectName}-${Module}-${ROLE}-${Zone}-g'
+              - Region:
+                  Fn::FindInMap:
+                    - EnvMap
+                    - !Ref Env
+                    - Region
+                Environment:
+                  Fn::FindInMap:
+                    - EnvMap
+                    - !Ref Env
+                    - Environment
+                ROLE:
+                  Fn::FindInMap:
+                    - ModuleMap
+                    - !Ref Module
+                    - ROLE
+        - Key: IPA_TAGS
+          Value:
+            Fn::Sub:
+              - '${Region}-${Environment}-${ProjectName}-${Module}-${ROLE}-${Zone}-g, app-account:${ProjectName}sysops.${ProjectName}-${Environment}'
+              - Region:
+                  Fn::FindInMap:
+                    - EnvMap
+                    - !Ref Env
+                    - Region
+                Environment:
+                  Fn::FindInMap:
+                    - EnvMap
+                    - !Ref Env
+                    - Environment
+                ROLE:
+                  Fn::FindInMap:
+                    - ModuleMap
+                    - !Ref Module
+                    - ROLE
+        - Key: GBL_CLASS_0
+          Value: "SERVICE"
+        - Key: GBL_CLASS_1
+          Value: 
+            Fn::FindInMap:
+              - ModuleMap
+              - !Ref Module
+              - GBLClass1
+        - Key: ENV
+          Value: 
+            Fn::FindInMap:
+              - EnvMap
+              - !Ref Env
+              - ENV
+        - Key: TYPE
+          Value: 
+            Fn::FindInMap:
+              - ModuleMap
+              - !Ref Module
+              - TYPE
+        - Key: OS
+          Value: "Amazon Linux 2023"
+
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            sed -i 's/${AmiZone}/${Zone}/g' /etc/profile
+
+            aws s3 cp s3://resource-parser-01/init_al2023.sh init_al2023.sh
+            chmod +x init_al2023.sh && ./init_al2023.sh
+            rm -rf ./init_al2023.sh
