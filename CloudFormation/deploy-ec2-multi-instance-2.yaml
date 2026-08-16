@@ -282,12 +282,12 @@ Resources:
   # Fn::ForEach            > 반복문
   # CreateApacheInstances  > 반복문이름
   'Fn::ForEach::CreateApacheInstances':
-    - Index                        # 반복변수
-    - !Ref ApacheInstances         # 반복할 목록 (Parameters.ApacheInstances)
-    - 'ApacheInstance&{Index}':    # 각 Index마다 박복할 Resource
-        Type: AWS::EC2::Instance   # 생성할 리소스 타입 : 인스턴스
-        Condition: IsCreateApache  # Parameters.Create<MODULE> 값이 Yes면 인스턴스 생성
-        Properties:                # 생성할 리소스 설정
+    - Index                         # 반복변수
+    - !Ref ApacheInstances          # 반복할 목록 (Parameters.ApacheInstances)
+    - 'ApacheInstance&{Index}':     # 각 Index마다 박복할 Resource
+        Type: AWS::EC2::Instance    # 생성할 리소스 타입 : 인스턴스
+        Condition: IsCreateApache   # Parameters.Create<MODULE> 값이 Yes면 인스턴스 생성
+        Properties:                 # 생성할 리소스 설정
           ImageId: !Ref ApacheAmiId
 
           KeyName: 
