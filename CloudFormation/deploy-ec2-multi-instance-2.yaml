@@ -1,0 +1,423 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::LanguageExtensions
+Description: Migration from x86_64 to ARM
+
+###############################################################################
+# Parameters
+###############################################################################
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "REQUIRED"
+        Parameters:
+          - Env
+          - Region
+          - MonitoringAgentKey
+
+      - Label:
+          default: "Create Apache Instances"
+        Parameters:
+          - CreateApache
+          - ApacheInstanceType
+          - ApacheAmiId
+          - ApacheAmiIndex
+          - ApacheInstances
+
+      - Label:
+          default: "Create Tomcat Instances"
+        Parameters:
+          - CreateTomcat
+          - TomcatInstanceType
+          - TomcatAmiId
+          - TomcatAmiIndex
+          - TomcatInstances
+
+Parameters:
+  # AWS Console STACK 에서 수동 입력
+  Env:
+    Type: String
+    Default: prd
+  Region:
+    Type: String
+    Default: ireland
+    AllowedValues:
+      - ireland
+      - oregon
+  MonitoringAgentKey:
+    Type: String
+    NoEcho: true
+
+  ######################################################
+  # Create<MODULE> ⮕ Conditions.IsCreate<MODULE> 
+  ######################################################
+  # AWS Console 에서 STACK을 생성할 때 Yes/No 선택한다.
+  # Yes : 인스턴스 생성
+  # No  : 인스턴스 미생성
+  CreateApache:
+    Type: String
+    Default: "No"
+    AllowedValues:
+      - "Yes"
+      - "No"
+  CreateTomcat:
+    Type: String
+    Default: "No"
+    AllowedValues:
+      - "Yes"
+      - "No"
+
+  ######################################################
+  # <MODULE>Insatnces   = 생성할 인스턴스의 Number 리스트
+  ######################################################
+  # Rolloing
+  ApacheInstances:
+    Type: ApachemaDelimitedList
+    Default: 01a
+    AllowedValues:
+      - 01a
+      - 02b
+      - 03a
+      - 04b
+  # Blue/Green
+  TomcatInstances:
+    Type: TomcatmaDelimitedList
+    Default: 01a-A
+    AllowedValues:
+      - 01a-A
+      - 02b-A
+      - 03a-A
+      - 04b-A
+      - 01a-B
+      - 02b-B
+      - 03a-B
+      - 04b-B
+
+  ######################################################
+  # <MODULE>AmiId     = 생성할 인스턴스에 적용할 AMI ID 
+  # <MODULE>AmiIndex  = 생성된 AMI의 인스턴스 Number
+  ######################################################
+  ApacheAmiId:
+    Type: String
+    Default: ""
+  ApacheAmiIndex:
+    Type: String
+    Default: ""
+    Description: >
+      Enter the index of the created AMI.
+      ex. projectName-prd-ireland-apache-01a : "01a"
+
+  TomcatAmiId:
+    Type: String
+    Default: ""
+  TomcatAmiIndex:
+    Type: String
+    Default: ""
+    Description: >
+      Enter the index of the created AMI.
+      ex1. projectName-prd-ireland-tomcat-01a-A : "01a-A"
+    
+  ApacheInstanceType:
+    Type: String
+    Default: c8g.xlarge
+    AllowedValues:
+      - c8g.large
+      - c8g.xlarge
+      - c8g.2xlarge
+      - m8g.large
+      - m8g.xlarge
+      - m8g.2xlarge
+    Description: "Please check Instance Type. Default is Ireland Instance Type."
+
+  TomcatInstanceType:
+    Type: String
+    Default: c8g.xlarge
+    AllowedValues:
+      - c8g.xlarge
+      - c8g.2xlarge
+      - m8g.large
+      - m8g.xlarge
+      - m8g.2xlarge
+    Description: "Please check Instance Type. Default is Ireland Instance Type."
+  
+###############################################################################
+# Mappings
+###############################################################################
+Mappings:
+  RegionMap:
+    ireland:
+      RegionCode: ew1
+      ApacheSecurityGroups: "sg-123,sg-456"
+      TomcatSecurityGroups: "sg-135,sg-246"
+
+    oregon:
+      RegionCode: uw2
+      ApacheSecurityGroups: "sg-987,sg-654"
+      TomcatSecurityGroups: "sg-531,sg-642"
+
+  SubnetMap:
+    prd-ireland:
+      Web01SubnetId: subnet-12345678
+      Web02SubnetId: subnet-87654321
+      Was01SubnetId: subnet-13579246
+      Was02SubnetId: subnet-24681357
+
+    prd-oregon:
+      Web01SubnetId: subnet-00000000
+      Web02SubnetId: subnet-11111111
+      Was01SubnetId: subnet-22222222
+      Was02SubnetId: subnet-33333333
+
+  IndexMap:
+    01a:
+      SubnetNumber: "01"
+    02b:
+      SubnetNumber: "02"
+    03a:
+      SubnetNumber: "01"
+    04b:
+      SubnetNumber: "02"
+
+    01a-A:
+      SubnetNumber: "01"
+      Group: "A"
+    02b-A:
+      SubnetNumber: "02"
+      Group: "A"
+    03a-A:
+      SubnetNumber: "01"
+      Group: "A"
+    04b-A:
+      SubnetNumber: "02"
+      Group: "A"
+
+    01a-B:
+      SubnetNumber: "01"
+      Group: "B"
+    02b-B:
+      SubnetNumber: "02"
+      Group: "B"
+    03a-B:
+      SubnetNumber: "01"
+      Group: "B"
+    04b-B:
+      SubnetNumber: "02"
+      Group: "B"
+  
+###############################################################################
+# Rules
+###############################################################################
+Rules:
+  ValidateApacheParameters:
+    # 특정 규칙 조건이 True일 때만 스택 생성/업데이트 가능
+    ## CreateApache, CreateTomcat 파라미터 값이 Yes일 때만 스택 생성/업데이트 가능
+    RuleCondition:
+      Fn::Equals:
+        - !Ref CreateApache
+        - "Yes"
+    RuleCondition:
+      Fn::Equals:
+        - !Ref CreateTomcat
+        - "Yes"
+
+    # 스택을 생성하거나 업데이트 하기 전 파라미터 값의 유효성 검증
+    ## Env, Region, MonitoringAgentKey, ApacheAmiId, ApacheAmiIndex 값이 비어있으면 스택 생성 실패
+    Assertions:
+      - Assert:
+          Fn::Not:
+            - Fn::Equals:
+                - !Ref Env
+                - ""
+        AssertDescription: "Env is required value."
+
+      - Assert:
+          Fn::Not:
+            - Fn::Equals:
+                - !Ref Region
+                - ""
+        AssertDescription: "Region is required value."
+
+      - Assert:
+          Fn::Not:
+            - Fn::Equals:
+                - !Ref MonitoringAgentKey
+                - ""
+        AssertDescription: "MonitoringAgentKey is required value."
+        
+      - Assert:
+          Fn::Not:
+            - Fn::Equals:
+                - !Ref ApacheAmiId
+                - ""
+        AssertDescription: "ApacheAmiId is required when CreateApache is Yes."
+
+      - Assert:
+          Fn::Not:
+            - Fn::Equals:
+                - !Ref ApacheAmiIndex
+                - ""
+        AssertDescription: "ApacheAmiIndex is required when CreateApache is Yes."
+
+###############################################################################
+# Conditions
+###############################################################################
+Conditions:
+  # Parameters.Create<MODULE> 에서 받아온 값(Yes/No)과 Conditions.IsCreate<MODULE> 값을 비교한다.
+  # Create<MODULE> = Yes  ⮕ [TRUE]  ⮕ 인스턴스 생성
+  # Create<MODULE> = No   ⮕ [FALSE] ⮕ 인스턴스 미생성
+  IsCreateApache: !Equals
+    - !Ref CreateApache
+    - "Yes"
+  IsCreateTomcat: !Equals
+    - !Ref CreateTomcat
+    - "Yes"
+
+###############################################################################
+# Resources
+###############################################################################
+Resources:
+  ##################################
+  #          CREATE Apache         #
+  ##################################
+  # Fn::ForEach            > 반복문
+  # CreateApacheInstances  > 반복문이름
+  'Fn::ForEach::CreateApacheInstances':
+    - Index                        # 반복변수
+    - !Ref ApacheInstances         # 반복할 목록 (Parameters.ApacheInstances)
+    - 'ApacheInstance&{Index}':    # 각 Index마다 박복할 Resource
+        Type: AWS::EC2::Instance   # 생성할 리소스 타입 : 인스턴스
+        Condition: IsCreateApache  # Parameters.Create<MODULE> 값이 Yes면 인스턴스 생성
+        Properties:                # 생성할 리소스 설정
+          ImageId: !Ref ApacheAmiId
+
+          KeyName: 
+            Fn::Sub:
+              - '${Env}-${RegionCode}-key'
+              - RegionCode:
+                  Fn::FindInMap:
+                    - RegionMap
+                    - !Ref Region
+                    - RegionCode
+
+          InstanceType: !Ref ApacheInstanceType
+
+          IamInstanceProfile: ec2_default_role
+          DisableApiTermination: true
+          MetadataOptions:
+            HttpTokens: "required"
+          
+          SubnetId:
+            Fn::FindInMap:
+              - SubnetMap
+              - !Sub '${Env}-${Region}'
+              - Fn::Sub:
+                  - 'Web${SubnetNumber}SubnetId'
+                  - SubnetNumber:
+                      Fn::FindInMap:
+                        - IndexMap
+                        - !Ref Index
+                        - SubnetNumber
+
+          SecurityGroupIds:
+            Fn::Split:
+              - ","
+              - Fn::FindInMap:
+                  - RegionMap
+                  - !Ref Region
+                  - WebSecurityGroups
+
+          Tags:
+            - Key: Name
+              Value: !Sub 'projectName-${Env}-${Region}-apache-${Index}'
+            - Key: Account
+              Value: !Sub 'projectName-${Env}-${Region}-apache-${Index}, app-account:sysops.${Env}'
+            - Key: CLASSIFY
+              Value: "SERVICE"
+            - Key: TYPE
+              Value: "WEB"
+            
+          UserData:
+            Fn::Base64:
+              Fn::Sub: |
+                #!/bin/bash
+                sed -i 's/${ApacheAmiIndex}/${Index}/g' /etc/profile
+
+                aws s3 cp s3://devops/init_al2023.sh init_al2023.sh
+                chmod +x init_al2023.sh
+                ./init_al2023.sh
+                rm -rf ./init_al2023.sh
+
+  ##################################
+  #          CREATE Tomcat         #
+  ##################################
+  'Fn::ForEach::CreateTomcatInstances':
+    - Index
+    - !Ref TomcatInstances
+    - 'TomcatInstance&{Index}':
+        Type: AWS::EC2::Instance
+        Condition: IsCreateTomcat
+        Properties:
+          ImageId: !Ref TomcatAmiId
+
+          KeyName: 
+            Fn::Sub:
+              - '${Env}-${RegionCode}-key'
+              - RegionCode:
+                  Fn::FindInMap:
+                    - RegionMap
+                    - !Ref Region
+                    - RegionCode
+
+          InstanceType: !Ref TomcatInstanceType
+
+          IamInstanceProfile: ec2_default_role
+          DisableApiTermination: true
+          MetadataOptions:
+            HttpTokens: "required"
+          
+          SubnetId:
+            Fn::FindInMap:
+              - SubnetMap
+              - !Sub '${Env}-${Region}'
+              - Fn::Sub:
+                  - 'Web${SubnetNumber}SubnetId'
+                  - SubnetNumber:
+                      Fn::FindInMap:
+                        - IndexMap
+                        - !Ref Index
+                        - SubnetNumber
+
+          SecurityGroupIds:
+            Fn::Split:
+              - ","
+              - Fn::FindInMap:
+                  - RegionMap
+                  - !Ref Region
+                  - WebSecurityGroups
+
+          Tags:
+            - Key: Name
+              Value: !Sub 'projectName-${Env}-${Region}-tomcat-${Index}'
+            - Key: Account
+              Value: !Sub 'projectName-${Env}-${Region}-tomcat-${Index}, app-account:sysops.${Env}'
+            - Key: CLASSIFY
+              Value: "Tomcat"
+            - Key: TYPE
+              Value: "WAS"
+            - Key: Group
+              Value:
+                Fn::FindInMap:
+                  - IndexMap
+                  - !Ref Index
+                  - Group
+            
+          UserData:
+            Fn::Base64:
+              Fn::Sub: |
+                #!/bin/bash
+                sed -i 's/${TomcatAmiIndex}/${Index}/g' /etc/profile
+
+                aws s3 cp s3://devops/init_al2023.sh init_al2023.sh
+                chmod +x init_al2023.sh
+                ./init_al2023.sh
+                rm -rf ./init_al2023.sh
