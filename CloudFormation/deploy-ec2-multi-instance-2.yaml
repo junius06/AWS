@@ -7,6 +7,7 @@ Description: Migration from x86_64 to ARM
 ###############################################################################
 Metadata:
   AWS::CloudFormation::Interface:
+    # 파라미터를 그룹화하여 Console에서 같은 라벨의 파라미터끼리 원하는 순서대로 나열되도록 하기 위함.
     ParameterGroups:
       - Label:
           default: "REQUIRED"
