@@ -145,7 +145,7 @@ Parameters:
       - m8g.xlarge
       - m8g.2xlarge
     Description: "Please check Instance Type. Default is Ireland Instance Type."
-  
+
 ###############################################################################
 # Mappings
 ###############################################################################
@@ -161,42 +161,51 @@ Mappings:
       ApacheSecurityGroups: "sg-987,sg-654"
       TomcatSecurityGroups: "sg-531,sg-642"
 
+  ModuleMap:
+    Apache:
+      Type: WEB
+      UseGroup: "false"
+
+    Tomcat:
+      Type: WAS
+      UseGroup: "true"
+
   SubnetMap:
     dev-ireland:
-      Web01SubnetId: subnet-00000000
-      Web02SubnetId: subnet-11111111
-      Was01SubnetId: subnet-22222222
-      Was02SubnetId: subnet-33333333
+      WEB01SubnetId: subnet-00000000
+      WEB02SubnetId: subnet-11111111
+      WAS01SubnetId: subnet-22222222
+      WAS02SubnetId: subnet-33333333
 
     dev-oregon:
-      Web01SubnetId: subnet-44444444
-      Web02SubnetId: subnet-55555555
-      Was01SubnetId: subnet-66666666
-      Was02SubnetId: subnet-77777777
+      WEB01SubnetId: subnet-44444444
+      WEB02SubnetId: subnet-55555555
+      WAS01SubnetId: subnet-66666666
+      WAS02SubnetId: subnet-77777777
 
     stg-ireland:
-      Web01SubnetId: subnet-88888888
-      Web02SubnetId: subnet-99999999
-      Was01SubnetId: subnet-12345678
-      Was02SubnetId: subnet-23456789
+      WEB01SubnetId: subnet-88888888
+      WEB02SubnetId: subnet-99999999
+      WAS01SubnetId: subnet-12345678
+      WAS02SubnetId: subnet-23456789
 
     stg-oregon:
-      Web01SubnetId: subnet-34567890
-      Web02SubnetId: subnet-45678901
-      Was01SubnetId: subnet-56789012
-      Was02SubnetId: subnet-67890123
+      WEB01SubnetId: subnet-34567890
+      WEB02SubnetId: subnet-45678901
+      WAS01SubnetId: subnet-56789012
+      WAS02SubnetId: subnet-67890123
 
     prd-ireland:
-      Web01SubnetId: subnet-78901234
-      Web02SubnetId: subnet-89012345
-      Was01SubnetId: subnet-90123456
-      Was02SubnetId: subnet-01234567
+      WEB01SubnetId: subnet-78901234
+      WEB02SubnetId: subnet-89012345
+      WAS01SubnetId: subnet-90123456
+      WAS02SubnetId: subnet-01234567
 
     prd-oregon:
-      Web01SubnetId: subnet-13579246
-      Web02SubnetId: subnet-24680135
-      Was01SubnetId: subnet-35780246
-      Was02SubnetId: subnet-46801235
+      WEB01SubnetId: subnet-13579246
+      WEB02SubnetId: subnet-24680135
+      WAS01SubnetId: subnet-35780246
+      WAS02SubnetId: subnet-46801235
 
   IndexMap:
     01a:
@@ -317,163 +326,114 @@ Conditions:
   # Parameters.Create<MODULE> 에서 받아온 값(Yes/No)과 Conditions.IsCreate<MODULE> 값을 비교한다.
   # Create<MODULE> = Yes  ⮕ [TRUE]  ⮕ 인스턴스 생성
   # Create<MODULE> = No   ⮕ [FALSE] ⮕ 인스턴스 미생성
-  IsCreateApache: !Equals
-    - !Ref CreateApache
-    - "Yes"
-  IsCreateTomcat: !Equals
-    - !Ref CreateTomcat
-    - "Yes"
+  IsCreateApache: !Equals [!Ref CreateApache, "Yes"]
+  IsCreateTomcat: !Equals [!Ref CreateTomcat, "Yes"]
+
+  'Fn::ForEach::Conditions':
+    - Module
+    - [Apache, Tomcat]
+    - 'HasGroup&{Module}':
+        Fn::Equals:
+          - Fn::FindInMap:
+              - ModuleMap
+              - '&{Module}'
+              - UseGroup
+          - "true"
 
 ###############################################################################
 # Resources
 ###############################################################################
 Resources:
-  ##################################
-  #          CREATE Apache         #
-  ##################################
-  # Fn::ForEach            > 반복문
-  # CreateApacheInstances  > 반복문이름
-  'Fn::ForEach::CreateApacheInstances':
-    - Index                         # 반복변수
-    - !Ref ApacheInstances          # 반복할 목록 (Parameters.ApacheInstances)
-    - 'ApacheInstance&{Index}':     # 각 Index마다 반복할 Resource
-        Type: AWS::EC2::Instance    # 생성할 리소스 타입 : 인스턴스
-        Condition: IsCreateApache   # Parameters.Create<MODULE> 값이 Yes면 인스턴스 생성
-        Properties:                 # 생성할 리소스 설정
-          ImageId: !Ref ApacheAmiId
+  'Fn::ForEach::Modules':
+    - Module
+    - [Apache, Tomcat]
+    - 'Fn::ForEach::Instances&{Module}':
+        - Index
+        - !Ref '&{Module}Instances'
+        - '&{Module}Instance&{Index}':
+            Type: AWS::EC2::Instance
+            Condition: IsCreate&{Module}
+            Properties:
+              ImageId: !Ref '&{Module}AmiId'
 
-          KeyName: 
-            Fn::Sub:
-              - '${Env}-${RegionCode}-key'
-              - RegionCode:
-                  Fn::FindInMap:
-                    - RegionMap
-                    - !Ref Region
-                    - RegionCode
-
-          InstanceType: !Ref ApacheInstanceType
-
-          IamInstanceProfile: ec2_default_role
-          DisableApiTermination: true
-          MetadataOptions:
-            HttpTokens: "required"
-          
-          SubnetId:
-            Fn::FindInMap:
-              - SubnetMap
-              - !Sub '${Env}-${Region}'
-              - Fn::Sub:
-                  - 'Web${SubnetNumber}SubnetId'
-                  - SubnetNumber:
+              KeyName: 
+                Fn::Sub:
+                  - '${Env}-${RegionCode}-key'
+                  - RegionCode:
                       Fn::FindInMap:
-                        - IndexMap
-                        - !Ref Index
-                        - SubnetNumber
+                        - RegionMap
+                        - !Ref Region
+                        - RegionCode
 
-          SecurityGroupIds:
-            Fn::Split:
-              - ","
-              - Fn::FindInMap:
-                  - RegionMap
-                  - !Ref Region
-                  - ApacheSecurityGroups
+              InstanceType: !Ref '&{Module}InstanceType'
 
-          Tags:
-            - Key: Name
-              Value: !Sub 'projectName-${Env}-${Region}-apache-${Index}'
-            - Key: Account
-              Value: !Sub 'projectName-${Env}-${Region}-apache-${Index}, app-account:sysops.${Env}'
-            - Key: CLASSIFY
-              Value: "SERVICE"
-            - Key: TYPE
-              Value: "WEB"
-            
-          UserData:
-            Fn::Base64:
-              Fn::Sub: |
-                #!/bin/bash
-                sed -i 's/${ApacheAmiIndex}/${Index}/g' /etc/profile
-
-                aws s3 cp s3://devops/init_al2023.sh init_al2023.sh
-                chmod +x init_al2023.sh
-                ./init_al2023.sh
-                rm -f ./init_al2023.sh
-
-                /opt/monitoring/start.sh account:sysops.${Env} ${MonitoringAgentKey} 
-
-  ##################################
-  #          CREATE Tomcat         #
-  ##################################
-  'Fn::ForEach::CreateTomcatInstances':
-    - Index
-    - !Ref TomcatInstances
-    - 'TomcatInstance&{Index}':
-        Type: AWS::EC2::Instance
-        Condition: IsCreateTomcat
-        Properties:
-          ImageId: !Ref TomcatAmiId
-
-          KeyName: 
-            Fn::Sub:
-              - '${Env}-${RegionCode}-key'
-              - RegionCode:
-                  Fn::FindInMap:
-                    - RegionMap
-                    - !Ref Region
-                    - RegionCode
-
-          InstanceType: !Ref TomcatInstanceType
-
-          IamInstanceProfile: ec2_default_role
-          DisableApiTermination: true
-          MetadataOptions:
-            HttpTokens: "required"
-          
-          SubnetId:
-            Fn::FindInMap:
-              - SubnetMap
-              - !Sub '${Env}-${Region}'
-              - Fn::Sub:
-                  - 'Was${SubnetNumber}SubnetId'
-                  - SubnetNumber:
-                      Fn::FindInMap:
-                        - IndexMap
-                        - !Ref Index
-                        - SubnetNumber
-
-          SecurityGroupIds:
-            Fn::Split:
-              - ","
-              - Fn::FindInMap:
-                  - RegionMap
-                  - !Ref Region
-                  - TomcatSecurityGroups
-
-          Tags:
-            - Key: Name
-              Value: !Sub 'projectName-${Env}-${Region}-tomcat-${Index}'
-            - Key: Account
-              Value: !Sub 'projectName-${Env}-${Region}-tomcat-${Index}, app-account:sysops.${Env}'
-            - Key: CLASSIFY
-              Value: "SERVICE"
-            - Key: TYPE
-              Value: "WAS"
-            - Key: Group
-              Value:
+              IamInstanceProfile: ec2_default_role
+              DisableApiTermination: true
+              MetadataOptions:
+                HttpTokens: "required"
+              
+              SubnetId:
                 Fn::FindInMap:
-                  - IndexMap
-                  - !Ref Index
-                  - Group
-            
-          UserData:
-            Fn::Base64:
-              Fn::Sub: |
-                #!/bin/bash
-                sed -i 's/${TomcatAmiIndex}/${Index}/g' /etc/profile
+                  - SubnetMap
+                  - !Sub '${Env}-${Region}'
+                  - Fn::Sub:
+                      - '${SubnetType}${SubnetNumber}SubnetId'
+                      - SubnetType:
+                          Fn::FindInMap:
+                            - ModuleMap
+                            - '&{Module}'
+                            - Type
+                        SubnetNumber:
+                          Fn::FindInMap:
+                            - IndexMap
+                            - !Ref Index
+                            - SubnetNumber
 
-                aws s3 cp s3://devops/init_al2023.sh init_al2023.sh
-                chmod +x init_al2023.sh
-                ./init_al2023.sh
-                rm -f ./init_al2023.sh
+              SecurityGroupIds:
+                Fn::Split:
+                  - ","
+                  - Fn::FindInMap:
+                      - RegionMap
+                      - !Ref Region
+                      - '&{Module}SecurityGroups'
 
-                /opt/monitoring/start.sh account:sysops.${Env} ${MonitoringAgentKey}
+              Tags:
+                - Key: Name
+                  Value: !Sub 'projectName-${Env}-${Region}-&{Module}-${Index}'
+                - Key: Account
+                  Value: !Sub 'projectName-${Env}-${Region}-&{Module}-${Index}, app-account:sysops.${Env}'
+                - Key: CLASSIFY
+                  Value: "SERVICE"
+                - Key: TYPE
+                  Value: 
+                    Fn::FindInMap:
+                      - ModuleMap
+                      - '&{Module}'
+                      - Type
+                - Fn::If:
+                    - HasGroup&{Module}
+                    - Key: Group
+                      Value:
+                        Fn::FindInMap:
+                          - IndexMap
+                          - !Ref Index
+                          - Group
+                    - !Ref AWS::NoValue
+                
+              UserData:
+                Fn::Base64:
+                  Fn::Sub: 
+                    - |
+                      #!/bin/bash
+                      sed -i 's/${AmiIndex}/${TargetIndex}/g' /etc/profile
+
+                      aws s3 cp s3://devops/init_al2023.sh init_al2023.sh
+                      chmod +x init_al2023.sh
+                      ./init_al2023.sh
+                      rm -f ./init_al2023.sh
+
+                      /opt/monitoring/start.sh account:sysops.${Env} ${MonitoringAgentKey}
+
+                    - AmiIndex: 
+                        Ref: '&{Module}AmiIndex'
+                      TargetIndex: '&{Index}'
